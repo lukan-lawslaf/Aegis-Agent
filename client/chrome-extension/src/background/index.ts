@@ -260,7 +260,8 @@ chrome.runtime.onConnect.addListener(port => {
 async function setupExecutor(taskId: string, task: string, browserContext: BrowserContext) {
   // SIH invariant: the browser has one model boundary only. FastAPI owns the
   // local Ollama versus OpenAI-compatible provider selection and credentials.
-  const gatewayLLM = createSihGatewayModel();
+  // The model tag itself is runtime-selectable from the settings modal.
+  const gatewayLLM = await createSihGatewayModel();
 
   // Apply firewall settings to browser context
   const firewall = await firewallStore.getFirewall();

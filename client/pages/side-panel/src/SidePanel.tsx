@@ -1,6 +1,7 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { type Message, Actors, chatHistoryStore, agentModelStore, generalSettingsStore } from '@extension/storage';
+import { type Message, Actors, chatHistoryStore, agentModelStore, generalSettingsStore, gatewayModelStore } from '@extension/storage';
+import { GATEWAY_MODEL_CHOICES } from './components/SettingsModal';
 import favoritesStorage, { type FavoritePrompt } from '@extension/storage/lib/prompt/favorites';
 import { t } from '@extension/i18n';
 
@@ -68,6 +69,9 @@ export const SidePanel = () => {
   const [serverUrl, setServerUrl] = useState<string>(
     () => (import.meta.env.VITE_SIH_FASTAPI_URL as string | undefined) ?? 'http://127.0.0.1:8000/v1',
   );
+  const [activeModel, setActiveModel] = useState<string>(
+    () => (import.meta.env.VITE_SIH_QWEN_MODEL as string | undefined) ?? GATEWAY_MODEL_CHOICES[1].value,
+  );
   const [sanitizedPreviewBase64, setSanitizedPreviewBase64] = useState<string | null>(null);
   const [isCapturingPreview, setIsCapturingPreview] = useState(false);
   const [timelineSteps, setTimelineSteps] = useState<TimelineStep[]>(DEFAULT_TIMELINE_STEPS);
@@ -112,6 +116,26 @@ export const SidePanel = () => {
   const handleToggleTheme = () => {
     setIsDarkMode((prev) => !prev);
   };
+
+  // Load + live-sync the runtime model selection (settings modal / other panels).
+  useEffect(() => {
+    const load = async () => {
+      try {
+        const stored = await gatewayModelStore.getModel();
+        if (stored) setActiveModel(stored);
+      } catch {
+        /* keep build default */
+      }
+    };
+    void load();
+    const unsubscribe = gatewayModelStore.subscribe(() => void load());
+    return () => unsubscribe();
+  }, []);
+
+  const handleModelChange = useCallback((model: string) => {
+    setActiveModel(model);
+    gatewayModelStore.setModel(model).catch(error => console.error('Failed to persist model selection:', error));
+  }, []);
 
   const prefersReducedMotion =
     typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -1035,6 +1059,8 @@ export const SidePanel = () => {
         isDarkMode={isDarkMode}
         serverUrl={serverUrl}
         onSaveServerUrl={setServerUrl}
+        activeModel={activeModel}
+        onModelChange={handleModelChange}
         providerMode={providerMode}
         onProviderChange={setProviderMode}
       />

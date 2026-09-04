@@ -3,12 +3,28 @@ import { FiX, FiServer, FiShield, FiCpu, FiCheck, FiAlertCircle, FiExternalLink,
 import { TbBrandChrome, TbBrandFirefox } from 'react-icons/tb';
 import type { ProviderMode } from './ConnectionIndicator';
 
+/** Friendly label → gateway model tag. The UI never shows raw tags. */
+export const GATEWAY_MODEL_CHOICES = [
+  { label: 'qwen3-vl 2b', value: 'qwen3-vl:2b' },
+  { label: 'qwen3-vl 4b', value: 'qwen3-vl:4b' },
+  { label: 'gemma4', value: 'gemma4:31b-cloud' },
+  { label: 'qwen3.5 2b', value: 'qwen3.5:2b' },
+  { label: 'qwen3.5 4b', value: 'qwen3.5:4b' },
+];
+
+export function modelLabel(value: string): string {
+  return GATEWAY_MODEL_CHOICES.find(choice => choice.value === value)?.label ?? value;
+}
+
 interface SettingsModalProps {
   isOpen: boolean;
   onClose: () => void;
   isDarkMode?: boolean;
   serverUrl: string;
   onSaveServerUrl: (url: string) => void;
+  /** Currently selected gateway model tag (runtime-switchable). */
+  activeModel: string;
+  onModelChange: (model: string) => void;
   providerMode?: ProviderMode;
   onProviderChange?: (mode: ProviderMode) => void;
 }
@@ -18,6 +34,8 @@ export function SettingsModal({
   onClose,
   serverUrl,
   onSaveServerUrl,
+  activeModel,
+  onModelChange,
 }: SettingsModalProps) {
   const [urlInput, setUrlInput] = useState(serverUrl);
   const [testStatus, setTestStatus] = useState<'idle' | 'testing' | 'success' | 'failed'>('idle');
@@ -126,6 +144,33 @@ export function SettingsModal({
               )}
             </div>
 
+            {/* Model picker — runtime switchable, no rebuild needed */}
+            <div className="space-y-1.5">
+              <span className="font-mono block text-[11px] text-secondary">planner model (applies to next task)</span>
+              <div className="flex flex-wrap gap-1.5">
+                {GATEWAY_MODEL_CHOICES.map(choice => {
+                  const isActive = choice.value === activeModel;
+                  return (
+                    <button
+                      key={choice.value}
+                      type="button"
+                      onClick={() => onModelChange(choice.value)}
+                      className={`cursor-pointer rounded-md border px-2.5 py-1 font-mono text-[11px] transition-colors ${
+                        isActive
+                          ? 'border-accent bg-accent-soft text-accent'
+                          : 'border-subtle text-secondary hover:border-strong hover:text-primary'
+                      }`}
+                      aria-pressed={isActive}>
+                      {choice.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <p className="font-mono text-[10px] text-tertiary">
+                single-brain: one model handles vision, planning and actions
+              </p>
+            </div>
+
             {/* Architecture Note */}
             <div className="space-y-1.5 rounded-lg border border-subtle p-3">
               <span className="flex items-center gap-1.5 font-mono text-[11px] text-primary">
@@ -146,7 +191,7 @@ export function SettingsModal({
                   <FiCpu className="text-kw" size={13} /> active planner model
                 </span>
                 <span className="rounded-md border border-subtle bg-subtle px-2 py-0.5 font-mono text-[10px] text-kw">
-                  qwen3-vl 2b / 4b
+                  {modelLabel(activeModel)}
                 </span>
               </div>
               <p className="text-[11px] leading-relaxed text-secondary">
