@@ -30,7 +30,9 @@ export const DEFAULT_GENERAL_SETTINGS: GeneralSettingsConfig = {
   maxFailures: 3,
   useVision: false,
   useVisionForPlanner: false,
-  planningInterval: 3,
+  // Higher = fewer planner round trips = faster execution. Every planner
+  // call is a full LLM round trip; 5 keeps re-planning rare but on schedule.
+  planningInterval: 5,
   displayHighlights: true,
   minWaitPageLoad: 250,
   replayHistoricalTasks: false,
