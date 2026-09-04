@@ -119,6 +119,19 @@ export abstract class BaseAgent<T extends z.ZodType, M = unknown> {
   }
 
   async invoke(inputMessages: BaseMessage[]): Promise<this['ModelOutput']> {
+    // Qwen3 models emit long <think> blocks by default, which burns the token
+    // budget before the JSON answer completes ("length limit was reached") and
+    // makes planning take minutes. The /no_think soft switch in the last user
+    // message disables it; it is inert text for non-Qwen models.
+    if (/qwen/i.test(this.modelName)) {
+      const last = inputMessages[inputMessages.length - 1];
+      if (last && typeof last.content === 'string') {
+        last.content = `${last.content}\n\n/no_think`.trim();
+      } else if (last && Array.isArray(last.content)) {
+        last.content = [...last.content, { type: 'text', text: '/no_think' }];
+      }
+    }
+
     // Use structured output
     if (this.withStructuredOutput) {
       logger.debug(`[${this.modelName}] Preparing structured output call with schema:`, {

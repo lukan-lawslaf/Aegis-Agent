@@ -13,7 +13,9 @@ export function createSihGatewayModel(): BaseChatModel {
     model,
     apiKey: 'sih-gateway',
     temperature: 0.1,
-    maxTokens: 4096,
+    // Generous cap: thinking-mode models can burn thousands of tokens before
+    // the JSON answer; truncation here breaks structured-output parsing.
+    maxTokens: 8192,
     configuration: {
       baseURL,
       defaultHeaders: { 'X-SIH-Protocol-Version': '1.0' },
