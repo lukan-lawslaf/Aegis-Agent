@@ -291,7 +291,10 @@ async function setupExecutor(taskId: string, task: string, browserContext: Brows
       maxFailures: generalSettings.maxFailures,
       maxActionsPerStep: generalSettings.maxActionsPerStep,
       useVision: generalSettings.useVision,
-      useVisionForPlanner: true,
+      // Sending a screenshot to the planner doubles every planning call's
+      // token count and adds vision-encoding latency; the text DOM map is
+      // enough for planning. Follow the user's setting (default: off).
+      useVisionForPlanner: generalSettings.useVisionForPlanner,
       planningInterval: generalSettings.planningInterval,
     },
     generalSettings: generalSettings,

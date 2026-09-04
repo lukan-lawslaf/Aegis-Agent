@@ -69,6 +69,15 @@ When determining if a task is "done":
     "web_task": "[boolean type], whether the ultimate task is related to browsing the web"
 }
 
+# TOKEN BUDGET (hard requirement — latency matters):
+Your entire JSON response MUST stay under 120 tokens. Concretely:
+- observation: at most 15 words
+- reasoning: at most 15 words
+- challenges: only when critical, otherwise empty string
+- next_steps: at most 2 steps, each at most 10 words
+- final_answer: concise but complete; only the answer, no preamble
+Never restate the task, never summarize history, never add commentary outside the JSON fields.
+
 # IMPORTANT FIELD RELATIONSHIPS:
 - When done=false: next_steps should contain action items, final_answer should be empty
 - When done=true: next_steps should be empty, final_answer should contain the complete response
