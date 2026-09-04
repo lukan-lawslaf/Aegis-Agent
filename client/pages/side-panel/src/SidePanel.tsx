@@ -63,7 +63,11 @@ export const SidePanel = () => {
   const [isPrivacyPreviewOpen, setIsPrivacyPreviewOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [providerMode, setProviderMode] = useState<ProviderMode>('fastapi');
-  const [serverUrl, setServerUrl] = useState<string>('http://127.0.0.1:8000/v1');
+  // The real gateway endpoint is baked at build time from VITE_SIH_FASTAPI_URL;
+  // show it here so the ping tests the same URL the model actually calls.
+  const [serverUrl, setServerUrl] = useState<string>(
+    () => (import.meta.env.VITE_SIH_FASTAPI_URL as string | undefined) ?? 'http://127.0.0.1:8000/v1',
+  );
   const [sanitizedPreviewBase64, setSanitizedPreviewBase64] = useState<string | null>(null);
   const [isCapturingPreview, setIsCapturingPreview] = useState(false);
   const [timelineSteps, setTimelineSteps] = useState<TimelineStep[]>(DEFAULT_TIMELINE_STEPS);
