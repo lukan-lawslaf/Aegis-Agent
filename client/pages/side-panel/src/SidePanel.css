@@ -1,0 +1,257 @@
+/* Aegis-Agent Side Panel Stylesheet — Terminal Dark (dark) / Paper Workspace (light) */
+
+:root {
+  /* Light mode: off-white paper workspace. Re-derived, not an inversion. */
+  --c-bg-base: #f7f8fa;
+  --c-bg-surface: #ffffff;
+  --c-bg-elevated: #ffffff;
+  --c-bg-subtle: #f1f3f5;
+  --c-border-subtle: #e4e7eb;
+  --c-border-strong: #d0d5dd;
+
+  --c-text-primary: #1a1c20;
+  --c-text-secondary: #4a5058;
+  --c-text-tertiary: #667085;
+
+  --c-accent: #3b7dd8;
+  --c-accent-soft: rgba(59, 125, 216, 0.12);
+
+  --c-ok: #12805c;
+  --c-warn: #9a6700;
+  --c-danger: #c92a2a;
+  --c-ok-soft: rgba(18, 128, 92, 0.1);
+  --c-warn-soft: rgba(154, 103, 0, 0.1);
+  --c-danger-soft: rgba(201, 42, 42, 0.08);
+
+  /* Ink palette for mono surfaces (light equivalents of the syntax palette) */
+  --c-kw: #7c4dbe;
+  --c-str: #3f7d3f;
+  --c-fn: #2b6cb0;
+  --c-num: #b2501a;
+  --c-const: #8a6d00;
+  --c-err: #c92a2a;
+
+  /* Pastel workspace accents (light-mode motifs) */
+  --paper-mint: #5ec6a8;
+  --paper-butter: #e8c547;
+  --paper-lavender: #9b8ccf;
+  --paper-coral: #e07856;
+  --paper-sky: #5ea0d8;
+
+  --font-sans: 'Space Grotesk', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+.dark {
+  /* Dark mode: layered near-blacks + syntax palette as the only accents. */
+  --c-bg-base: #0a0b0d;
+  --c-bg-surface: #101216;
+  --c-bg-elevated: #16181d;
+  --c-bg-subtle: #0d0f13;
+  --c-border-subtle: #1e2127;
+  --c-border-strong: #2a2e37;
+
+  --c-text-primary: #e6e8eb;
+  --c-text-secondary: #9ba1ac;
+  --c-text-tertiary: #6b7280;
+
+  --c-accent: #82aaff;
+  --c-accent-soft: rgba(130, 170, 255, 0.12);
+
+  --c-ok: #c3e88d;
+  --c-warn: #f78c6c;
+  --c-danger: #f07178;
+  --c-ok-soft: rgba(195, 232, 141, 0.08);
+  --c-warn-soft: rgba(247, 140, 108, 0.08);
+  --c-danger-soft: rgba(240, 113, 120, 0.08);
+
+  /* Syntax palette */
+  --c-kw: #c792ea;
+  --c-str: #c3e88d;
+  --c-fn: #82aaff;
+  --c-num: #f78c6c;
+  --c-const: #ffcb6b;
+  --c-err: #f07178;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: var(--c-bg-base);
+  color: var(--c-text-primary);
+  font-size: 13px;
+  line-height: 1.55;
+  overflow: hidden;
+}
+
+/* Light mode: subtle grid-paper background on the panel canvas */
+.paper-grid {
+  background-image:
+    linear-gradient(var(--c-border-subtle) 1px, transparent 1px),
+    linear-gradient(90deg, var(--c-border-subtle) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+/* Light-mode hero: a gentle, abstract collection of local-only privacy cues. */
+.privacy-collage {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+  opacity: 0.4;
+}
+
+.privacy-sticker,
+.privacy-collage__dot {
+  position: absolute;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--c-text-primary);
+  will-change: transform;
+  animation: privacy-float 13s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
+}
+
+.privacy-sticker {
+  gap: 0.22rem;
+  border: 1px solid color-mix(in srgb, var(--c-text-primary) 20%, transparent);
+  box-shadow: 2px 3px 0 color-mix(in srgb, var(--c-text-primary) 8%, transparent);
+  font-family: var(--font-mono);
+  font-size: 7px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.privacy-sticker svg { width: 15px; height: 15px; }
+.privacy-sticker--top-left { top: 10%; left: 8%; --tilt: -7deg; animation-delay: -8s; }
+.privacy-sticker--top-right { top: 10%; right: 9%; --tilt: 10deg; animation-delay: -3s; animation-duration: 15s; }
+.privacy-sticker--left { top: 52%; left: 5%; --tilt: -3deg; animation-delay: -11s; animation-duration: 14s; }
+.privacy-sticker--right { top: 47%; right: 7%; --tilt: 6deg; animation-delay: -5s; animation-duration: 16s; }
+.privacy-sticker--bottom-left { bottom: 10%; left: 15%; --tilt: -4deg; animation-delay: -6s; animation-duration: 15s; }
+.privacy-sticker--bottom-right { right: 17%; bottom: 8%; --tilt: 4deg; animation-delay: -13s; animation-duration: 14s; }
+.privacy-sticker--center { top: 36%; left: 48%; --tilt: -2deg; animation-delay: -2s; animation-duration: 12s; }
+
+.privacy-sticker--note { width: 41px; height: 47px; padding: 3px; flex-direction: column; background: #e7dcc0; }
+.privacy-sticker--stamp { width: 42px; height: 42px; flex-direction: column; border-radius: 50%; background: #cfc7ef; }
+.privacy-sticker--ticket { width: 52px; height: 23px; background: #e9a4c7; clip-path: polygon(0 0, 100% 0, 100% 34%, 94% 50%, 100% 66%, 100% 100%, 0 100%, 0 66%, 6% 50%, 0 34%); }
+.privacy-sticker--bell { width: 35px; height: 42px; color: #7a5800; background: #ffd36b; border-radius: 18px 18px 9px 9px; }
+.privacy-sticker--plane { width: 54px; height: 30px; color: #7a4a00; background: #ffc85a; clip-path: polygon(0 0, 100% 50%, 0 100%, 20% 50%); }
+.privacy-sticker--tag { width: 55px; height: 38px; flex-direction: column; color: #155f45; background: #9fdbb8; clip-path: polygon(16% 0, 84% 0, 100% 22%, 100% 78%, 84% 100%, 16% 100%, 0 78%, 0 22%); }
+.privacy-sticker--lock { width: 39px; height: 34px; border-radius: 10px; color: #6b5c47; background: #ede4cb; }
+
+.privacy-collage__dot { width: 4px; height: 4px; border-radius: 999px; background: var(--paper-lavender); }
+.privacy-collage__dot--one { top: 23%; left: 36%; --tilt: 0deg; animation-delay: -1s; }
+.privacy-collage__dot--two { right: 36%; bottom: 28%; --tilt: 0deg; background: var(--paper-coral); animation-delay: -9s; }
+.privacy-collage__dot--three { top: 60%; left: 38%; --tilt: 0deg; background: var(--paper-mint); animation-delay: -4s; }
+
+@keyframes privacy-float {
+  0%, 100% { transform: translate3d(0, 0, 0) rotate(var(--tilt)); }
+  33% { transform: translate3d(6px, -5px, 0) rotate(calc(var(--tilt) + 1deg)); }
+  66% { transform: translate3d(-5px, 4px, 0) rotate(calc(var(--tilt) - 1deg)); }
+}
+
+.privacy-collage--static *,
+.privacy-collage--static { animation: none !important; }
+
+/* Scrollbars */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: var(--c-border-strong);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: var(--c-text-tertiary);
+}
+
+.scrollbar-gutter-stable {
+  scrollbar-gutter: stable;
+}
+
+/* Monospace marks machine-adjacent content only */
+code,
+pre,
+.font-mono {
+  font-family: var(--font-mono);
+}
+
+code {
+  background: var(--c-accent-soft);
+  border: 1px solid var(--c-border-subtle);
+  border-radius: 0.25rem;
+  padding: 0.1rem 0.35rem;
+  font-size: 11.5px;
+  color: var(--c-fn);
+  font-weight: 500;
+}
+
+button,
+input,
+textarea,
+select {
+  font-family: inherit;
+  transition:
+    background-color 0.15s ease-out,
+    border-color 0.15s ease-out,
+    color 0.15s ease-out;
+}
+
+/* The double-border frame motif: outer frame + inner surface, concentric radii */
+.frame-outer {
+  border-radius: 16px;
+  border: 1px solid var(--c-border-subtle);
+  background: var(--c-bg-subtle);
+  padding: 4px;
+}
+
+.frame-inner {
+  border-radius: 12px;
+  border: 1px solid var(--c-border-subtle);
+  background: var(--c-bg-surface);
+  overflow: hidden;
+}
+
+/* Light-mode sticker chips: slight rotation, paper feel */
+.sticker {
+  border-radius: 10px;
+  border: 1px solid var(--c-border-strong);
+  box-shadow: 2px 2px 0 var(--c-border-subtle);
+}
+
+.sticker-rotate-1 {
+  transform: rotate(-1.2deg);
+}
+.sticker-rotate-2 {
+  transform: rotate(0.8deg);
+}
+.sticker-rotate-3 {
+  transform: rotate(-0.6deg);
+}
+.sticker-rotate-4 {
+  transform: rotate(1.4deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001s !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001s !important;
+  }
+}

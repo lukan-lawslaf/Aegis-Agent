@@ -1,0 +1,325 @@
+import 'webextension-polyfill';
+import {
+  firewallStore,
+  generalSettingsStore,
+  analyticsSettingsStore,
+} from '@extension/storage';
+import { t } from '@extension/i18n';
+import BrowserContext from './browser/context';
+import { Executor } from './agent/executor';
+import { createLogger } from './log';
+import { ExecutionState } from './agent/event/types';
+import { DEFAULT_AGENT_OPTIONS } from './agent/types';
+import { injectBuildDomTreeScripts } from './browser/dom/service';
+import { analytics } from './services/analytics';
+import { createSihGatewayModel } from './sih/gateway';
+import { captureSanitizedVisibleTab } from './sih/privacy';
+import { getPrivacyDiagnostics } from './sih/blazeface';
+
+const logger = createLogger('background');
+
+const browserContext = new BrowserContext({});
+let currentExecutor: Executor | null = null;
+let currentPort: chrome.runtime.Port | null = null;
+const SIDE_PANEL_URL = chrome.runtime.getURL('side-panel/index.html');
+
+// Setup Chrome side-panel behavior. Firefox uses sidebar_action and does not
+// expose chrome.sidePanel, so the guard is required for the shared bundle.
+if (chrome.sidePanel?.setPanelBehavior) {
+  chrome.sidePanel.setPanelBehavior({ openPanelOnActionClick: true }).catch(error => console.error(error));
+}
+
+chrome.tabs.onUpdated.addListener(async (tabId, changeInfo, tab) => {
+  if (tabId && changeInfo.status === 'complete' && tab.url?.startsWith('http')) {
+    await injectBuildDomTreeScripts(tabId);
+  }
+});
+
+// Listen for debugger detached event
+// if canceled_by_user, remove the tab from the browser context
+chrome.debugger.onDetach.addListener(async (source, reason) => {
+  console.log('Debugger detached:', source, reason);
+  if (reason === 'canceled_by_user') {
+    if (source.tabId) {
+      currentExecutor?.cancel();
+      await browserContext.cleanup();
+    }
+  }
+});
+
+// Cleanup when tab is closed
+chrome.tabs.onRemoved.addListener(tabId => {
+  browserContext.removeAttachedPage(tabId);
+});
+
+logger.info('background loaded');
+
+// SIH builds default to zero telemetry. Opt-in only for a local development
+// experiment with VITE_SIH_ENABLE_ANALYTICS=true.
+if (import.meta.env.VITE_SIH_ENABLE_ANALYTICS === 'true') {
+  analytics.init().catch(error => {
+    logger.error('Failed to initialize analytics:', error);
+  });
+}
+
+// Listen for analytics settings changes
+analyticsSettingsStore.subscribe(() => {
+  analytics.updateSettings().catch(error => {
+    logger.error('Failed to update analytics settings:', error);
+  });
+});
+
+// Listen for simple messages (e.g., from options page)
+chrome.runtime.onMessage.addListener(() => {
+  // Handle other message types if needed in the future
+  // Return false if response is not sent asynchronously
+  // return false;
+});
+
+// Setup connection listener for long-lived connections (e.g., side panel)
+chrome.runtime.onConnect.addListener(port => {
+  if (port.name === 'side-panel-connection') {
+    const senderUrl = port.sender?.url;
+    const senderId = port.sender?.id;
+
+    if (!senderUrl || senderId !== chrome.runtime.id || senderUrl !== SIDE_PANEL_URL) {
+      logger.warning('Blocked unauthorized side-panel-connection', senderId, senderUrl);
+      port.disconnect();
+      return;
+    }
+
+    currentPort = port;
+
+    port.onMessage.addListener(async message => {
+      try {
+        switch (message.type) {
+          case 'heartbeat':
+            // Acknowledge heartbeat
+            port.postMessage({ type: 'heartbeat_ack' });
+            break;
+
+          case 'new_task': {
+            if (!message.task) return port.postMessage({ type: 'error', error: t('bg_cmd_newTask_noTask') });
+            if (!message.tabId) return port.postMessage({ type: 'error', error: t('bg_errors_noTabId') });
+
+            logger.info('new_task', message.tabId, message.task);
+            currentExecutor = await setupExecutor(message.taskId, message.task, browserContext);
+            subscribeToExecutorEvents(currentExecutor);
+
+            const result = await currentExecutor.execute();
+            logger.info('new_task execution result', message.tabId, result);
+            break;
+          }
+
+          case 'follow_up_task': {
+            if (!message.task) return port.postMessage({ type: 'error', error: t('bg_cmd_followUpTask_noTask') });
+            if (!message.tabId) return port.postMessage({ type: 'error', error: t('bg_errors_noTabId') });
+
+            logger.info('follow_up_task', message.tabId, message.task);
+
+            // If executor exists, add follow-up task
+            if (currentExecutor) {
+              currentExecutor.addFollowUpTask(message.task);
+              // Re-subscribe to events in case the previous subscription was cleaned up
+              subscribeToExecutorEvents(currentExecutor);
+              const result = await currentExecutor.execute();
+              logger.info('follow_up_task execution result', message.tabId, result);
+            } else {
+              // executor was cleaned up, can not add follow-up task
+              logger.info('follow_up_task: executor was cleaned up, can not add follow-up task');
+              return port.postMessage({ type: 'error', error: t('bg_cmd_followUpTask_cleaned') });
+            }
+            break;
+          }
+
+          case 'cancel_task': {
+            if (!currentExecutor) return port.postMessage({ type: 'error', error: t('bg_errors_noRunningTask') });
+            await currentExecutor.cancel();
+            break;
+          }
+
+          case 'resume_task': {
+            if (!currentExecutor) return port.postMessage({ type: 'error', error: t('bg_cmd_resumeTask_noTask') });
+            await currentExecutor.resume();
+            return port.postMessage({ type: 'success' });
+          }
+
+          case 'pause_task': {
+            if (!currentExecutor) return port.postMessage({ type: 'error', error: t('bg_errors_noRunningTask') });
+            await currentExecutor.pause();
+            return port.postMessage({ type: 'success' });
+          }
+
+          case 'screenshot': {
+            if (!message.tabId) return port.postMessage({ type: 'error', error: t('bg_errors_noTabId') });
+            const page = await browserContext.switchTab(message.tabId);
+            const screenshot = await page.takeScreenshot();
+            logger.info('screenshot', message.tabId, screenshot);
+            return port.postMessage({ type: 'success', screenshot });
+          }
+
+          case 'state': {
+            try {
+              const browserState = await browserContext.getState(true);
+              const elementsText = browserState.elementTree.clickableElementsToString(
+                DEFAULT_AGENT_OPTIONS.includeAttributes,
+              );
+
+              logger.info('state', browserState);
+              logger.info('interactive elements', elementsText);
+              return port.postMessage({ type: 'success', msg: t('bg_cmd_state_printed') });
+            } catch (error) {
+              logger.error('Failed to get state:', error);
+              return port.postMessage({ type: 'error', error: t('bg_cmd_state_failed') });
+            }
+          }
+
+          case 'nohighlight': {
+            const page = await browserContext.getCurrentPage();
+            await page.removeHighlight();
+            return port.postMessage({ type: 'success', msg: t('bg_cmd_nohighlight_ok') });
+          }
+
+          case 'speech_to_text': {
+            return port.postMessage({
+              type: 'speech_to_text_error',
+              error: 'Speech-to-text is disabled in the SIH build; use browser-native dictation or type the task.',
+            });
+          }
+
+          case 'capture_sanitized': {
+            // Privacy preview capture. Runs the same DOM-mask + face-redaction
+            // pipeline the agent uses, so the preview never shows raw pixels.
+            if (!message.tabId) return port.postMessage({ type: 'capture_sanitized_error', error: t('bg_errors_noTabId') });
+            try {
+              const { image, domMasks } = await captureSanitizedVisibleTab(message.tabId);
+              return port.postMessage({ type: 'capture_sanitized_result', image, domMasks });
+            } catch (error) {
+              // Attach the privacy-stack trace so the side panel shows the
+              // exact failing step instead of a generic refusal.
+              const reason = error instanceof Error ? error.message : t('errors_unknown');
+              let detail = reason;
+              try {
+                const trace = await getPrivacyDiagnostics();
+                detail = `${reason} — privacy trace: ${trace.join(' | ')}`;
+              } catch (diagnosticError) {
+                logger.error('Privacy diagnostics failed:', diagnosticError);
+              }
+              return port.postMessage({ type: 'capture_sanitized_error', error: detail });
+            }
+          }
+
+          case 'replay': {
+            if (!message.tabId) return port.postMessage({ type: 'error', error: t('bg_errors_noTabId') });
+            if (!message.taskId) return port.postMessage({ type: 'error', error: t('bg_errors_noTaskId') });
+            if (!message.historySessionId)
+              return port.postMessage({ type: 'error', error: t('bg_cmd_replay_noHistory') });
+            logger.info('replay', message.tabId, message.taskId, message.historySessionId);
+
+            try {
+              // Switch to the specified tab
+              await browserContext.switchTab(message.tabId);
+              // Setup executor with the new taskId and a dummy task description
+              currentExecutor = await setupExecutor(message.taskId, message.task, browserContext);
+              subscribeToExecutorEvents(currentExecutor);
+
+              // Run replayHistory with the history session ID
+              const result = await currentExecutor.replayHistory(message.historySessionId);
+              logger.debug('replay execution result', message.tabId, result);
+            } catch (error) {
+              logger.error('Replay failed:', error);
+              return port.postMessage({
+                type: 'error',
+                error: error instanceof Error ? error.message : t('bg_cmd_replay_failed'),
+              });
+            }
+            break;
+          }
+
+          default:
+            return port.postMessage({ type: 'error', error: t('errors_cmd_unknown', [message.type]) });
+        }
+      } catch (error) {
+        console.error('Error handling port message:', error);
+        port.postMessage({
+          type: 'error',
+          error: error instanceof Error ? error.message : t('errors_unknown'),
+        });
+      }
+    });
+
+    port.onDisconnect.addListener(() => {
+      // this event is also triggered when the side panel is closed, so we need to cancel the task
+      console.log('Side panel disconnected');
+      currentPort = null;
+      currentExecutor?.cancel();
+    });
+  }
+});
+
+async function setupExecutor(taskId: string, task: string, browserContext: BrowserContext) {
+  // SIH invariant: the browser has one model boundary only. FastAPI owns the
+  // local Ollama versus OpenAI-compatible provider selection and credentials.
+  const gatewayLLM = createSihGatewayModel();
+
+  // Apply firewall settings to browser context
+  const firewall = await firewallStore.getFirewall();
+  if (firewall.enabled) {
+    browserContext.updateConfig({
+      allowedUrls: firewall.allowList,
+      deniedUrls: firewall.denyList,
+    });
+  } else {
+    browserContext.updateConfig({
+      allowedUrls: [],
+      deniedUrls: [],
+    });
+  }
+
+  const generalSettings = await generalSettingsStore.getSettings();
+  browserContext.updateConfig({
+    minimumWaitPageLoadTime: generalSettings.minWaitPageLoad / 1000.0,
+    displayHighlights: generalSettings.displayHighlights,
+  });
+
+  const executor = new Executor(task, taskId, browserContext, gatewayLLM, {
+    plannerLLM: gatewayLLM,
+    extractorLLM: gatewayLLM,
+    agentOptions: {
+      maxSteps: generalSettings.maxSteps,
+      maxFailures: generalSettings.maxFailures,
+      maxActionsPerStep: generalSettings.maxActionsPerStep,
+      useVision: generalSettings.useVision,
+      useVisionForPlanner: true,
+      planningInterval: generalSettings.planningInterval,
+    },
+    generalSettings: generalSettings,
+  });
+
+  return executor;
+}
+
+// Update subscribeToExecutorEvents to use port
+async function subscribeToExecutorEvents(executor: Executor) {
+  // Clear previous event listeners to prevent multiple subscriptions
+  executor.clearExecutionEvents();
+
+  // Subscribe to new events
+  executor.subscribeExecutionEvents(async event => {
+    try {
+      if (currentPort) {
+        currentPort.postMessage(event);
+      }
+    } catch (error) {
+      logger.error('Failed to send message to side panel:', error);
+    }
+
+    if (
+      event.state === ExecutionState.TASK_OK ||
+      event.state === ExecutionState.TASK_FAIL ||
+      event.state === ExecutionState.TASK_CANCEL
+    ) {
+      await currentExecutor?.cleanup();
+    }
+  });
+}
