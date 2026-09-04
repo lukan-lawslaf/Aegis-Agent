@@ -10,6 +10,7 @@
  * namespace as `globalThis.ort` with `globalThis.__SIH_ORT_URL__` already
  * pointing at `dist/ort/` for sibling wasm resolution.
  */
+// eslint-disable-next-line import/namespace -- type-only import; the package ships types at its root
 import type * as OrtWebGpu from 'onnxruntime-web';
 
 let ortNamespace: typeof OrtWebGpu | null = null;

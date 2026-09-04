@@ -15,6 +15,9 @@ interface HeaderProps {
   onProviderChange: (mode: ProviderMode) => void;
   serverUrl?: string;
   totalRedactionsCount?: number;
+  /** Privacy firewall master switch state (live from storage). */
+  sanitizeContent?: boolean;
+  onToggleSanitization?: (next: boolean) => void;
 }
 
 export function Header({
@@ -30,6 +33,8 @@ export function Header({
   onProviderChange,
   serverUrl,
   totalRedactionsCount = 0,
+  sanitizeContent = true,
+  onToggleSanitization,
 }: HeaderProps) {
   const iconButton =
     'relative p-1.5 rounded-md text-tertiary hover:text-secondary hover:bg-elevated transition-colors cursor-pointer';
@@ -136,14 +141,35 @@ export function Header({
             onProviderChange={onProviderChange}
             serverUrl={serverUrl}
           />
-          <button
-            type="button"
-            onClick={onOpenPrivacyPreview}
-            className="flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-0.5 font-mono text-[11px] text-ok hover:bg-ok-soft"
-            title="Click to inspect perception firewall metrics">
-            <span className="inline-block size-1.5 rounded-full bg-ok" />
-            <span>firewall: active</span>
-          </button>
+          <div className="flex items-center gap-1.5">
+            {/* Firewall master switch — click to toggle sanitization */}
+            <button
+              type="button"
+              onClick={() => onToggleSanitization?.(!sanitizeContent)}
+              disabled={!onToggleSanitization}
+              className={`flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-0.5 font-mono text-[11px] transition-colors disabled:cursor-default ${
+                sanitizeContent ? 'text-ok hover:bg-ok-soft' : 'bg-warn-soft text-warn hover:opacity-80'
+              }`}
+              title={
+                sanitizeContent
+                  ? 'Privacy firewall ON — faces blurred, PII masked before anything leaves this device. Click to turn off (trusted pages only).'
+                  : 'Privacy firewall OFF — raw page content goes to the gateway. Click to re-enable.'
+              }
+              aria-pressed={sanitizeContent}
+              aria-label="Toggle privacy firewall">
+              <span
+                className={`inline-block size-1.5 rounded-full ${sanitizeContent ? 'bg-ok' : 'bg-warn animate-pulse'}`}
+              />
+              <span>{sanitizeContent ? 'firewall: active' : 'firewall: off'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={onOpenPrivacyPreview}
+              className="flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-0.5 font-mono text-[11px] text-tertiary hover:bg-elevated hover:text-secondary"
+              title="Click to inspect perception firewall metrics">
+              <span>preview</span>
+            </button>
+          </div>
         </div>
       )}
     </header>

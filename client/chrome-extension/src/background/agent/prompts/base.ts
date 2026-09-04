@@ -2,7 +2,7 @@ import { HumanMessage, type SystemMessage } from '@langchain/core/messages';
 import type { AgentContext } from '@src/background/agent/types';
 import { wrapUntrustedContent } from '../messages/utils';
 import { createLogger } from '@src/background/log';
-import { sanitizeText } from '@src/background/sih/privacy';
+import { maybeSanitizeText } from '@src/background/sih/privacy';
 
 const logger = createLogger('BasePrompt');
 /**
@@ -29,7 +29,7 @@ abstract class BasePrompt {
    */
   async buildBrowserStateUserMessage(context: AgentContext): Promise<HumanMessage> {
     const browserState = await context.browserContext.getState(context.options.useVision);
-    const rawElementsText = sanitizeText(
+    const rawElementsText = await maybeSanitizeText(
       browserState.elementTree.clickableElementsToString(context.options.includeAttributes),
     );
 
@@ -56,20 +56,22 @@ abstract class BasePrompt {
       for (let i = 0; i < context.actionResults.length; i++) {
         const result = context.actionResults[i];
         if (result.extractedContent) {
-          actionResultsDescription += `\nAction result ${i + 1}/${context.actionResults.length}: ${sanitizeText(result.extractedContent)}`;
+          actionResultsDescription += `\nAction result ${i + 1}/${context.actionResults.length}: ${await maybeSanitizeText(result.extractedContent)}`;
         }
         if (result.error) {
           // only use last line of error
           const error = result.error.split('\n').pop();
-          actionResultsDescription += `\nAction error ${i + 1}/${context.actionResults.length}: ...${sanitizeText(error ?? '')}`;
+          actionResultsDescription += `\nAction error ${i + 1}/${context.actionResults.length}: ...${await maybeSanitizeText(error ?? '')}`;
         }
       }
     }
 
-    const currentTab = `{id: ${browserState.tabId}, url: ${sanitizeText(browserState.url)}, title: ${sanitizeText(browserState.title)}}`;
-    const otherTabs = browserState.tabs
-      .filter(tab => tab.id !== browserState.tabId)
-      .map(tab => `- {id: ${tab.id}, url: ${sanitizeText(tab.url)}, title: ${sanitizeText(tab.title)}}`);
+    const currentTab = `{id: ${browserState.tabId}, url: ${await maybeSanitizeText(browserState.url)}, title: ${await maybeSanitizeText(browserState.title)}}`;
+    const otherTabs = await Promise.all(
+      browserState.tabs
+        .filter(tab => tab.id !== browserState.tabId)
+        .map(async tab => `- {id: ${tab.id}, url: ${await maybeSanitizeText(tab.url)}, title: ${await maybeSanitizeText(tab.title)}}`),
+    );
     const stateDescription = `
 [Task history memory ends]
 [Current state starts here]

@@ -57,6 +57,7 @@ export const SidePanel = () => {
   const [isProcessingSpeech, setIsProcessingSpeech] = useState(false);
   const [isReplaying, setIsReplaying] = useState(false);
   const [replayEnabled, setReplayEnabled] = useState(false);
+  const [sanitizeContent, setSanitizeContent] = useState(true);
 
   // Aegis-Agent State Additions
   const [isPrivacyPreviewOpen, setIsPrivacyPreviewOpen] = useState(false);
@@ -135,11 +136,23 @@ export const SidePanel = () => {
     try {
       const settings = await generalSettingsStore.getSettings();
       setReplayEnabled(settings.replayHistoricalTasks);
+      setSanitizeContent(settings.sanitizeContent !== false);
     } catch (error) {
       console.error('Error loading general settings:', error);
       setReplayEnabled(false);
+      setSanitizeContent(true); // fail closed
     }
   }, []);
+
+  // Live-sync the firewall switch (options page or another panel can change it).
+  useEffect(() => {
+    const unsubscribe = generalSettingsStore.subscribe(() => {
+      void loadGeneralSettings();
+    });
+    return () => {
+      unsubscribe();
+    };
+  }, [loadGeneralSettings]);
 
   useEffect(() => {
     checkModelConfiguration();
@@ -169,6 +182,23 @@ export const SidePanel = () => {
         .catch((err) => console.error('Failed to save message to history:', err));
     }
   }, []);
+
+  const handleToggleSanitization = useCallback(
+    (next: boolean) => {
+      setSanitizeContent(next);
+      generalSettingsStore
+        .updateSettings({ sanitizeContent: next })
+        .catch(error => console.error('Failed to persist sanitization toggle:', error));
+      appendMessage({
+        actor: Actors.SYSTEM,
+        content: next
+          ? 'privacy firewall ON — faces + PII are redacted before egress.'
+          : 'privacy firewall OFF — raw page content will be sent to the gateway. Turn it back on when done.',
+        timestamp: Date.now(),
+      });
+    },
+    [appendMessage],
+  );
 
   // Update Timeline State Helper
   const updateTimelinePhase = useCallback((phaseKey: TimelineStep['key'], status: TimelineStep['status'], error?: string) => {
@@ -814,6 +844,8 @@ export const SidePanel = () => {
         onProviderChange={setProviderMode}
         serverUrl={serverUrl}
         totalRedactionsCount={privacyMetrics.regionsRedacted}
+        sanitizeContent={sanitizeContent}
+        onToggleSanitization={handleToggleSanitization}
       />
 
       {/* Main Content Area */}

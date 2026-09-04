@@ -7,6 +7,7 @@
  * regions to the same manifest later.
  */
 
+import { generalSettingsStore } from '@extension/storage';
 import { redactFacesFromBase64 } from './blazeface';
 
 export type RedactionKind = 'password' | 'email' | 'phone' | 'payment' | 'pii' | 'credential';
@@ -33,9 +34,23 @@ export interface SanitizedDomField {
 }
 
 const EMAIL = /\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b/gi;
-const PHONE = /(?<!\d)(?:\+?\d[\d .()\-]{7,}\d)(?!\d)/g;
+const PHONE = /(?<!\d)(?:\+?\d[\d .()-]{7,}\d)(?!\d)/g;
 const CARD = /(?<!\d)(?:\d[ -]?){13,19}(?!\d)/g;
 const SECRET_NAME = /(pass(word)?|secret|token|api[-_ ]?key|auth|credential|otp|cvv|pin)/i;
+
+/**
+ * Master user switch for the privacy firewall. When off (explicit user
+ * choice on a trusted page), content flows to the gateway unsanitized.
+ * Default is on; every egress path must consult this before redacting.
+ */
+export async function isSanitizationEnabled(): Promise<boolean> {
+  try {
+    const settings = await generalSettingsStore.getSettings();
+    return settings.sanitizeContent !== false;
+  } catch {
+    return true; // fail closed
+  }
+}
 
 function matches(pattern: RegExp, value: string): boolean {
   pattern.lastIndex = 0;
@@ -50,6 +65,15 @@ export function sanitizeText(input: string): string {
     .replace(EMAIL, '[REDACTED_EMAIL]')
     .replace(CARD, '[REDACTED_PAYMENT]')
     .replace(PHONE, '[REDACTED_PHONE]');
+}
+
+/**
+ * Setting-aware sanitizeText for model-bound text. When the user has turned
+ * the firewall off, text flows through unchanged (explicit trusted-work mode).
+ */
+export async function maybeSanitizeText(input: string): Promise<string> {
+  if (!(await isSanitizationEnabled())) return input;
+  return sanitizeText(input);
 }
 
 function bboxOf(field: SanitizedDomField): [number, number, number, number] | null {
@@ -128,47 +152,54 @@ async function captureVisibleTabWithBackoff(): Promise<string> {
 /** Capture a viewport with DOM-first masks when Puppeteer/CDP is unavailable. */
 export async function captureSanitizedVisibleTab(tabId: number): Promise<{ image: string; domMasks: number }> {
   const target = { tabId };
-  const result = await chrome.scripting.executeScript({
-    target,
-    func: () => {
-      const selector = [
-        'input[type="password"]',
-        'input[autocomplete*="password" i]',
-        'input[autocomplete*="cc-" i]',
-        'input[name*="password" i]',
-        'input[name*="token" i]',
-        'input[name*="secret" i]',
-        'input[name*="api_key" i]',
-        'input[id*="password" i]',
-        'input[id*="token" i]',
-        'textarea[name*="secret" i]',
-      ].join(',');
-      let count = 0;
-      const addMask = (element: HTMLElement) => {
-        const rect = element.getBoundingClientRect();
-        if (rect.width <= 0 || rect.height <= 0) return;
-        const mask = document.createElement('div');
-        mask.dataset.sihRedaction = 'capture';
-        Object.assign(mask.style, {
-          position: 'fixed', left: `${rect.left}px`, top: `${rect.top}px`,
-          width: `${rect.width}px`, height: `${rect.height}px`,
-          zIndex: '2147483647', background: '#000', pointerEvents: 'none',
-        });
-        document.documentElement.appendChild(mask);
-        count += 1;
-      };
-      document.querySelectorAll<HTMLElement>(selector).forEach(addMask);
-      const pii = /(?:\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b|(?<!\d)(?:\+?\d[\d .()\-]{7,}\d)(?!\d))/i;
-      document.querySelectorAll<HTMLElement>('body *').forEach(element => {
-        if (element.children.length === 0 && pii.test(element.innerText || '')) addMask(element);
-      });
-      return count;
-    },
-  });
+  const sanitize = await isSanitizationEnabled();
+  const result = sanitize
+    ? await chrome.scripting.executeScript({
+        target,
+        func: () => {
+          const selector = [
+            'input[type="password"]',
+            'input[autocomplete*="password" i]',
+            'input[autocomplete*="cc-" i]',
+            'input[name*="password" i]',
+            'input[name*="token" i]',
+            'input[name*="secret" i]',
+            'input[name*="api_key" i]',
+            'input[id*="password" i]',
+            'input[id*="token" i]',
+            'textarea[name*="secret" i]',
+          ].join(',');
+          let count = 0;
+          const addMask = (element: HTMLElement) => {
+            const rect = element.getBoundingClientRect();
+            if (rect.width <= 0 || rect.height <= 0) return;
+            const mask = document.createElement('div');
+            mask.dataset.sihRedaction = 'capture';
+            Object.assign(mask.style, {
+              position: 'fixed', left: `${rect.left}px`, top: `${rect.top}px`,
+              width: `${rect.width}px`, height: `${rect.height}px`,
+              zIndex: '2147483647', background: '#000', pointerEvents: 'none',
+            });
+            document.documentElement.appendChild(mask);
+            count += 1;
+          };
+          document.querySelectorAll<HTMLElement>(selector).forEach(addMask);
+          const pii = /(?:\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b|(?<!\d)(?:\+?\d[\d .()-]{7,}\d)(?!\d))/i;
+          document.querySelectorAll<HTMLElement>('body *').forEach(element => {
+            if (element.children.length === 0 && pii.test(element.innerText || '')) addMask(element);
+          });
+          return count;
+        },
+      })
+    : [{ result: 0 } as chrome.scripting.InjectionResult<number>];
 
   try {
     const captured = await captureVisibleTabWithBackoff();
     const base64 = captured.replace(/^data:image\/[^;]+;base64,/, '');
+    if (!sanitize) {
+      // User explicitly disabled the firewall for this session: raw pixels.
+      return { image: base64, domMasks: 0 };
+    }
     const image = await redactFacesFromBase64(base64);
     return { image, domMasks: result[0]?.result ?? 0 };
   } finally {

@@ -70,6 +70,7 @@ If the face model can't load, visual tasks **refuse to run** rather than sending
 | ⚡ | **Inference inside the service worker** | ONNX Runtime Web runs BlazeFace directly in the Chrome MV3 service worker (WASM backend) — no extra processes, no server round-trip for privacy |
 | 🔁 | **Model test matrix** | Qwen3-VL 2B/4B (local, primary) plus qwen3.5 2B/4B and Ollama-cloud models for A/B testing — switch with one env var |
 | 🖥️ | **Two-laptop demo** | Everything sensitive stays on Laptop A; the heavy model runs on Laptop B over LAN/Ethernet/hotspot |
+| 🎛️ | **Firewall master switch** | One click on the `firewall: active` chip toggles sanitization off for trusted work (raw context to the gateway) and back on — persisted, live-synced, off-state is loud and obvious |
 | 🎨 | **Two-mood UI** | Terminal-dark theme with a WebGL FaultyTerminal hero, or a paper/sticker light theme — same panel, two personalities |
 
 ## 📁 Project structure

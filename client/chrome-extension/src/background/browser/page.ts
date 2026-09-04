@@ -21,7 +21,7 @@ import { type BrowserContextConfig, DEFAULT_BROWSER_CONTEXT_CONFIG, type PageSta
 import { createLogger } from '@src/background/log';
 import { ClickableElementProcessor } from './dom/clickable/service';
 import { isUrlAllowed } from './util';
-import { captureSanitizedVisibleTab } from '../sih/privacy';
+import { captureSanitizedVisibleTab, isSanitizationEnabled } from '../sih/privacy';
 import { redactFacesFromBase64 } from '../sih/blazeface';
 
 const logger = createLogger('Page');
@@ -472,8 +472,11 @@ export default class Page {
 
       // Apply DOM-first privacy masks in the page before pixels are encoded.
       // This runs before every screenshot used by the model and fails closed
-      // for password/credential-like controls.
-      privacyOverlayCount = await this._puppeteerPage.evaluate(() => {
+      // for password/credential-like controls — unless the user explicitly
+      // turned the firewall off for trusted work.
+      const sanitize = await isSanitizationEnabled();
+      privacyOverlayCount = sanitize
+        ? await this._puppeteerPage.evaluate(() => {
         const selector = [
           'input[type="password"]',
           'input[autocomplete*="password" i]',
@@ -508,7 +511,7 @@ export default class Page {
 
         // Mask leaf elements whose rendered text itself looks like PII. This
         // covers common email/phone/card values that are not form controls.
-        const piiPattern = /(?:\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b|(?<!\d)(?:\+?\d[\d .()\-]{7,}\d)(?!\d))/i;
+        const piiPattern = /(?:\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b|(?<!\d)(?:\+?\d[\d .()-]{7,}\d)(?!\d))/i;
         for (const element of Array.from(document.querySelectorAll<HTMLElement>('body *'))) {
           if (element.children.length > 0 || !piiPattern.test(element.innerText || '')) continue;
           const rect = element.getBoundingClientRect();
@@ -529,7 +532,8 @@ export default class Page {
           count += 1;
         }
         return count;
-      });
+        })
+        : 0;
 
       // Take the screenshot using JPEG format with 80% quality
       const screenshot = await this._puppeteerPage.screenshot({
@@ -554,6 +558,10 @@ export default class Page {
         }
       });
 
+      if (!sanitize) {
+        // User explicitly disabled the firewall: pass raw pixels through.
+        return screenshot as string;
+      }
       return await redactFacesFromBase64(screenshot as string);
     } catch (error) {
       if (privacyOverlayCount > 0) {
