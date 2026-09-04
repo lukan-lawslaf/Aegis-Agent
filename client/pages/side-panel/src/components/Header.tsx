@@ -142,26 +142,43 @@ export function Header({
             serverUrl={serverUrl}
           />
           <div className="flex items-center gap-1.5">
-            {/* Firewall master switch — click to toggle sanitization */}
-            <button
-              type="button"
-              onClick={() => onToggleSanitization?.(!sanitizeContent)}
-              disabled={!onToggleSanitization}
-              className={`flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-0.5 font-mono text-[11px] transition-colors disabled:cursor-default ${
-                sanitizeContent ? 'text-ok hover:bg-ok-soft' : 'bg-warn-soft text-warn hover:opacity-80'
-              }`}
+            {/* Firewall toggle switch — sanitization master control */}
+            <label
+              className={`flex items-center gap-2 ${onToggleSanitization ? 'cursor-pointer' : 'cursor-default'}`}
               title={
                 sanitizeContent
-                  ? 'Privacy firewall ON — faces blurred, PII masked before anything leaves this device. Click to turn off (trusted pages only).'
-                  : 'Privacy firewall OFF — raw page content goes to the gateway. Click to re-enable.'
-              }
-              aria-pressed={sanitizeContent}
-              aria-label="Toggle privacy firewall">
+                  ? 'Privacy firewall ON — faces blurred, PII masked before anything leaves this device. Switch off for trusted pages only.'
+                  : 'Privacy firewall OFF — raw page content goes to the gateway. Switch back on to re-enable redaction.'
+              }>
+              <span className="font-mono text-[11px] text-secondary">firewall</span>
+              <span className="relative inline-flex">
+                <input
+                  type="checkbox"
+                  role="switch"
+                  className="peer sr-only"
+                  checked={sanitizeContent}
+                  disabled={!onToggleSanitization}
+                  onChange={() => onToggleSanitization?.(!sanitizeContent)}
+                  aria-label="Toggle privacy firewall"
+                />
+                {/* track */}
+                <span
+                  className={`block h-4 w-7 rounded-full border transition-colors peer-disabled:opacity-50 ${
+                    sanitizeContent ? 'border-ok bg-ok-soft' : 'border-warn bg-warn-soft'
+                  }`}
+                />
+                {/* knob */}
+                <span
+                  className={`absolute top-[3px] left-[3px] block size-2.5 rounded-full transition-transform peer-disabled:opacity-50 ${
+                    sanitizeContent ? 'translate-x-3 bg-ok' : 'bg-warn'
+                  }`}
+                />
+              </span>
               <span
-                className={`inline-block size-1.5 rounded-full ${sanitizeContent ? 'bg-ok' : 'bg-warn animate-pulse'}`}
-              />
-              <span>{sanitizeContent ? 'firewall: active' : 'firewall: off'}</span>
-            </button>
+                className={`font-mono text-[11px] ${sanitizeContent ? 'text-ok' : 'animate-pulse text-warn'}`}>
+                {sanitizeContent ? 'on' : 'off'}
+              </span>
+            </label>
             <button
               type="button"
               onClick={onOpenPrivacyPreview}
