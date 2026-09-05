@@ -70,7 +70,8 @@ export const SidePanel = () => {
     () => (import.meta.env.VITE_SIH_FASTAPI_URL as string | undefined) ?? 'http://127.0.0.1:8000/v1',
   );
   const [activeModel, setActiveModel] = useState<string>(
-    () => (import.meta.env.VITE_SIH_QWEN_MODEL as string | undefined) ?? GATEWAY_MODEL_CHOICES[1].value,
+    // executor/navigator model; the planner runs a fixed fast local model
+    () => (import.meta.env.VITE_SIH_QWEN_MODEL as string | undefined) ?? GATEWAY_MODEL_CHOICES[0].value,
   );
   const [sanitizedPreviewBase64, setSanitizedPreviewBase64] = useState<string | null>(null);
   const [isCapturingPreview, setIsCapturingPreview] = useState(false);

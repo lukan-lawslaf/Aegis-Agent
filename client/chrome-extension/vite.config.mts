@@ -54,7 +54,7 @@ function copyOrtRuntimePlugin(): PluginOption {
       if (existsSync(bundlePath)) {
         let source = await readFile(bundlePath, 'utf8');
         const exportMatch = source.match(/export\{([^}]*)\};/);
-        if (exportMatch) {
+        if (exportMatch?.index !== undefined) {
           const members = exportMatch[1]
             .split(',')
             .map(pair => pair.trim().split(/\s+as\s+/))

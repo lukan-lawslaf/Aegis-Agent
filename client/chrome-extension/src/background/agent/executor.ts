@@ -232,6 +232,9 @@ export class Executor {
   /**
    * Helper method to run planner and store its output
    */
+  /** A hanging planner call must never stall the loop — 3 minutes, then move on. */
+  private static readonly PLANNER_TIMEOUT_MS = 3 * 60 * 1000;
+
   private async runPlanner(): Promise<AgentOutput<PlannerOutput> | null> {
     const context = this.context;
     try {
@@ -244,8 +247,14 @@ export class Executor {
         positionForPlan = this.context.messageManager.length();
       }
 
-      // Execute planner
-      const planOutput = await this.planner.execute();
+      // Execute planner, bounded by a hard timeout: on expiry the loop keeps
+      // running on the last plan instead of stalling.
+      const planOutput = await Promise.race([
+        this.planner.execute(),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('planner timed out after 3 minutes; continuing with current plan')), Executor.PLANNER_TIMEOUT_MS),
+        ),
+      ]);
       if (planOutput.result) {
         this.context.messageManager.addPlan(JSON.stringify(planOutput.result), positionForPlan);
       }
@@ -261,6 +270,11 @@ export class Executor {
         error instanceof ExtensionConflictError
       ) {
         throw error;
+      }
+      // Timeouts degrade silently: the executor keeps running on the last
+      // plan, and a slow planner must never accumulate into a task failure.
+      if (error instanceof Error && error.message.includes('planner timed out')) {
+        return null;
       }
       context.consecutiveFailures++;
       logger.error(`Failed to execute planner: ${error}`);

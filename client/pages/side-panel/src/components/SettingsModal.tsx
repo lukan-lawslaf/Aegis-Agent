@@ -5,11 +5,10 @@ import type { ProviderMode } from './ConnectionIndicator';
 
 /** Friendly label → gateway model tag. The UI never shows raw tags. */
 export const GATEWAY_MODEL_CHOICES = [
-  { label: 'qwen3-vl 2b', value: 'qwen3-vl:2b' },
-  { label: 'qwen3-vl 4b', value: 'qwen3-vl:4b' },
   { label: 'gemma4', value: 'gemma4:31b-cloud' },
-  { label: 'qwen3.5 2b', value: 'qwen3.5:2b' },
-  { label: 'qwen3.5 4b', value: 'qwen3.5:4b' },
+  { label: 'qwen3-vl 4b instruct', value: 'qwen3-vl:4b-instruct' },
+  { label: 'qwen3-vl 4b', value: 'qwen3-vl:4b' },
+  { label: 'qwen3-vl 2b', value: 'qwen3-vl:2b' },
 ];
 
 export function modelLabel(value: string): string {
@@ -144,9 +143,14 @@ export function SettingsModal({
               )}
             </div>
 
-            {/* Model picker — runtime switchable, no rebuild needed */}
+            {/* Model roles — split brain, runtime switchable executor */}
             <div className="space-y-1.5">
-              <span className="font-mono block text-[11px] text-secondary">planner model (applies to next task)</span>
+              <div className="flex items-center justify-between">
+                <span className="font-mono text-[11px] text-secondary">executor model (applies to next task)</span>
+                <span className="font-mono text-[10px] text-tertiary">
+                  planner: qwen3-vl 4b instruct · 3m cap
+                </span>
+              </div>
               <div className="flex flex-wrap gap-1.5">
                 {GATEWAY_MODEL_CHOICES.map(choice => {
                   const isActive = choice.value === activeModel;
@@ -167,7 +171,8 @@ export function SettingsModal({
                 })}
               </div>
               <p className="font-mono text-[10px] text-tertiary">
-                single-brain: one model handles vision, planning and actions
+                split brain: planner stays local + fast; executor is swappable. qwen3.5 is text-only — avoid for vision
+                steps.
               </p>
             </div>
 
@@ -188,7 +193,7 @@ export function SettingsModal({
             <div className="space-y-1.5 rounded-lg border border-subtle p-3">
               <div className="flex items-center justify-between">
                 <span className="flex items-center gap-1.5 font-mono text-[11px] text-primary">
-                  <FiCpu className="text-kw" size={13} /> active planner model
+                  <FiCpu className="text-kw" size={13} /> active executor model
                 </span>
                 <span className="rounded-md border border-subtle bg-subtle px-2 py-0.5 font-mono text-[10px] text-kw">
                   {modelLabel(activeModel)}

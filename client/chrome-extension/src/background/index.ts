@@ -258,10 +258,12 @@ chrome.runtime.onConnect.addListener(port => {
 });
 
 async function setupExecutor(taskId: string, task: string, browserContext: BrowserContext) {
-  // SIH invariant: the browser has one model boundary only. FastAPI owns the
-  // local Ollama versus OpenAI-compatible provider selection and credentials.
-  // The model tag itself is runtime-selectable from the settings modal.
-  const gatewayLLM = await createSihGatewayModel();
+  // SIH split-brain: one FastAPI boundary, two model roles. The planner (and
+  // the extractor/validator, which share its structured-output shape) runs the
+  // fast local instruct model; the navigator/executor runs the runtime-picked
+  // model. The gateway honors each request's model field.
+  const plannerLLM = await createSihGatewayModel('planner');
+  const navigatorLLM = await createSihGatewayModel('navigator');
 
   // Apply firewall settings to browser context
   const firewall = await firewallStore.getFirewall();
@@ -283,9 +285,10 @@ async function setupExecutor(taskId: string, task: string, browserContext: Brows
     displayHighlights: generalSettings.displayHighlights,
   });
 
-  const executor = new Executor(task, taskId, browserContext, gatewayLLM, {
-    plannerLLM: gatewayLLM,
-    extractorLLM: gatewayLLM,
+  const executor = new Executor(task, taskId, browserContext, navigatorLLM, {
+    plannerLLM,
+    // extractor/validator share the planner's structured-output shape
+    extractorLLM: plannerLLM,
     agentOptions: {
       maxSteps: generalSettings.maxSteps,
       maxFailures: generalSettings.maxFailures,
